@@ -1,0 +1,119 @@
+from __future__ import annotations
+
+from typing import Any
+
+import click
+import httpx
+
+from schift_cli.config import get_api_key, get_api_url
+
+# Timeout: 30s connect, 120s read (migrations can be slow)
+DEFAULT_TIMEOUT = httpx.Timeout(30.0, read=120.0)
+
+
+class SchiftAPIError(Exception):
+    """Raised when the Schift API returns a non-2xx response."""
+
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(f"HTTP {status_code}: {detail}")
+
+
+class SchiftClient:
+    """HTTP client for the Schift API.
+
+    Handles authentication headers, base URL resolution, and consistent
+    error handling so command modules can stay focused on CLI logic.
+    """
+
+    def __init__(self, api_key: str | None = None, base_url: str | None = None):
+        self.api_key = api_key or get_api_key()
+        self.base_url = (base_url or get_api_url()).rstrip("/")
+        self._http = httpx.Client(
+            base_url=self.base_url,
+            timeout=DEFAULT_TIMEOUT,
+            headers=self._build_headers(),
+        )
+
+    def _build_headers(self) -> dict[str, str]:
+        headers: dict[str, str] = {
+            "User-Agent": "schift-cli/0.1.0",
+            "Accept": "application/json",
+        }
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    # -- HTTP verbs ----------------------------------------------------------
+
+    def get(self, path: str, **kwargs: Any) -> Any:
+        return self._request("GET", path, **kwargs)
+
+    def post(self, path: str, **kwargs: Any) -> Any:
+        return self._request("POST", path, **kwargs)
+
+    def put(self, path: str, **kwargs: Any) -> Any:
+        return self._request("PUT", path, **kwargs)
+
+    def delete(self, path: str, **kwargs: Any) -> Any:
+        return self._request("DELETE", path, **kwargs)
+
+    # -- Internal -------------------------------------------------------------
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        try:
+            resp = self._http.request(method, path, **kwargs)
+        except httpx.ConnectError:
+            raise click.ClickException(
+                f"Could not connect to Schift API at {self.base_url}\n"
+                "  The server may be unavailable. Check your network or set "
+                "SCHIFT_API_URL if using a custom endpoint."
+            )
+        except httpx.TimeoutException:
+            raise click.ClickException(
+                "Request timed out. The server may be under heavy load — try again."
+            )
+
+        if resp.status_code == 401:
+            raise click.ClickException(
+                "Authentication failed. Run `schift auth login` to set your API key."
+            )
+
+        if resp.status_code >= 400:
+            try:
+                body = resp.json()
+                detail = body.get("detail") or body.get("message") or resp.text
+            except Exception:
+                detail = resp.text
+            raise SchiftAPIError(resp.status_code, str(detail))
+
+        if resp.status_code == 204:
+            return None
+        return resp.json()
+
+    def close(self) -> None:
+        self._http.close()
+
+    def __enter__(self) -> SchiftClient:
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self.close()
+
+
+def require_api_key() -> str:
+    """Return the API key or abort with a helpful message."""
+    key = get_api_key()
+    if not key:
+        raise click.ClickException(
+            "No API key configured.\n"
+            "  Run `schift auth login` or set the SCHIFT_API_KEY environment variable."
+        )
+    return key
+
+
+def get_client() -> SchiftClient:
+    """Create a client, ensuring an API key is present."""
+    api_key = require_api_key()
+    return SchiftClient(api_key=api_key)
