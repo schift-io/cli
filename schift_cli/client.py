@@ -53,6 +53,9 @@ class SchiftClient:
     def post(self, path: str, **kwargs: Any) -> Any:
         return self._request("POST", path, **kwargs)
 
+    def post_multipart(self, path: str, *, data: dict[str, Any] | None = None, files: Any = None) -> Any:
+        return self._request("POST", path, data=data, files=files)
+
     def put(self, path: str, **kwargs: Any) -> Any:
         return self._request("PUT", path, **kwargs)
 
@@ -117,3 +120,31 @@ def get_client() -> SchiftClient:
     """Create a client, ensuring an API key is present."""
     api_key = require_api_key()
     return SchiftClient(api_key=api_key)
+
+
+def extract_items(data: Any, key: str) -> list[dict[str, Any]]:
+    """Normalize list-like API responses."""
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    if isinstance(data, dict):
+        value = data.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def resolve_bucket(client: SchiftClient, bucket: str, *, create: bool = False) -> dict[str, Any]:
+    buckets = extract_items(client.get("/buckets"), "buckets")
+    for item in buckets:
+        if item.get("id") == bucket or item.get("name") == bucket:
+            return item
+
+    if not create:
+        raise click.ClickException(f"Bucket not found: {bucket}")
+
+    created = client.post("/buckets", json={"name": bucket})
+    if isinstance(created, dict) and isinstance(created.get("bucket"), dict):
+        return created["bucket"]
+    if isinstance(created, dict):
+        return created
+    raise click.ClickException("Unexpected create bucket response from Schift API.")

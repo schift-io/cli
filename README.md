@@ -1,14 +1,15 @@
 # Schift CLI
 
-Command-line interface for Schift, the operational layer for embedding catalogs, vector collections, benchmark runs, and model migration rollouts.
+Command-line interface for Schift, the operational layer for bucket ingest, vector search, benchmark runs, and model migration rollouts.
 
 ## What it covers
 
 - Authenticate against the Schift API
+- Upload files into a bucket and track ingest jobs
 - Inspect the embedding model catalog
 - Generate single or batch embeddings
 - Create and inspect vector collections
-- Run semantic search queries
+- Run bucket or collection search from the terminal
 - Benchmark a source-to-target migration before rollout
 - Fit and execute projection-based migrations
 - Inspect usage summaries
@@ -60,6 +61,10 @@ export SCHIFT_API_URL=http://localhost:8080/v1
 schift auth login
 schift auth status
 
+schift upload ./handbook.pdf --bucket company-docs
+schift jobs list --bucket company-docs
+schift search "revenue report" --bucket company-docs --top-k 5
+
 schift catalog list
 schift catalog get openai/text-embedding-3-large
 
@@ -67,7 +72,7 @@ schift embed "hello world" --model openai/text-embedding-3-large
 
 schift db create my-docs --dim 3072 --metric cosine
 schift db list
-schift query "revenue report" --collection my-docs --top-k 5
+schift search "revenue report" --collection my-docs --top-k 5
 
 schift bench \
   --source openai/text-embedding-3-large \
@@ -95,7 +100,10 @@ schift migrate run \
 | `schift bench ...` | Evaluate migration quality between two models |
 | `schift migrate ...` | Fit a projection and apply it to a database |
 | `schift db ...` | Create, list, and inspect collections |
-| `schift query ...` | Run semantic search against a collection |
+| `schift upload ...` | Upload files into a bucket |
+| `schift jobs ...` | Inspect, reprocess, and cancel ingest jobs |
+| `schift search ...` | Run bucket or collection search |
+| `schift query ...` | Compatibility alias for collection search |
 | `schift usage ...` | Show aggregated usage and billing summary |
 
 ## Authentication
@@ -183,10 +191,32 @@ schift db stats my-docs
 
 `db list` prints a table with collection name, dimensions, metric, vector count, and creation time. `db stats` prints a detailed panel with index and storage metadata when the API returns it.
 
-## Query Command
+## Upload Command
 
 ```bash
-schift query \
+schift upload ./handbook.pdf ./policy.md --bucket company-docs
+```
+
+- The CLI creates the bucket when it does not exist yet.
+- `--ocr-strategy`, `--chunk-size`, and `--chunk-overlap` pass ingest overrides through to the API.
+- Output includes the created ingest job IDs so you can track readiness immediately.
+
+## Jobs Commands
+
+```bash
+schift jobs list --bucket company-docs
+schift jobs get job_123
+schift jobs reprocess job_123
+```
+
+- `jobs list` filters by bucket, status, and limit.
+- `jobs get` is the inspect surface for one job.
+- `jobs reprocess` and `jobs cancel` are the operational recovery paths when ingest needs attention.
+
+## Search Command
+
+```bash
+schift search \
   "revenue guidance" \
   --collection my-docs \
   --top-k 10 \
@@ -194,11 +224,20 @@ schift query \
   --threshold 0.8
 ```
 
-- `--collection` is required.
+- Pass exactly one of `--collection` or `--bucket`.
 - `--model` is optional.
-- `--threshold` lets you filter low-score results.
+- `--threshold` lets you filter low-score results after the API returns matches.
+- `--filter` accepts the canonical JSON filter envelope for metadata and system fields.
 
 The CLI prints a ranked result table with ID, score, and a truncated text preview.
+
+## Query Compatibility Command
+
+```bash
+schift query "revenue guidance" --collection my-docs --top-k 10
+```
+
+`query` remains as the compatibility alias for older collection-search scripts.
 
 ## Benchmark Command
 
