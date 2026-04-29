@@ -32,8 +32,15 @@ app.post('/api/chat', async (c) => {
   const { message } = await c.req.json();
 
   // Only uses the current message — no history
-  const results = await client.search('col_...', message);
-  const context = results.map(r => r.text).join('\n');
+  const results = await client.search({
+    collection: 'docs',
+    query: message,
+    topK: 4,
+    mode: 'hybrid',
+    rerank: true,
+    rerankTopK: 4,
+  });
+  const context = results.map(r => r.metadata?.text ?? '').join('\n');
 
   // LLM has no idea what was said before
   const response = await fetch('https://api.schift.io/v1/llm/chat/completions', {
@@ -55,8 +62,8 @@ app.post('/api/chat', async (c) => {
 # Python — same problem: no history, no context carryover
 @app.post("/api/chat")
 async def chat(body: ChatRequest):
-    results = client.search("col_...", body.message)  # no history used
-    context = "\n".join(r.text for r in results)
+    results = client.query(body.message, collection="docs", top_k=4)  # no history used
+    context = "\n".join((r.get("metadata") or {}).get("text", "") for r in results)
     # Stateless: every call is a fresh conversation
 ```
 
@@ -98,11 +105,15 @@ app.post('/api/chat', async (c) => {
   const searchQuery = `${recentContext} ${message}`.trim();
 
   // 3. Retrieve relevant chunks from Schift
-  const results = await client.search(COLLECTION_ID, searchQuery, {
+  const results = await client.search({
+    collection: COLLECTION_ID,
+    query: searchQuery,
     topK: 4,
-    scoreThreshold: 0.70,
+    mode: 'hybrid',
+    rerank: true,
+    rerankTopK: 4,
   });
-  const retrievedContext = results.map(r => r.text).join('\n\n');
+  const retrievedContext = results.map(r => r.metadata?.text ?? '').join('\n\n');
 
   // 4. Assemble messages: system prompt + history + new user message
   //    Keep last 10 turns to stay within token limits
@@ -193,10 +204,14 @@ async def chat(body: ChatRequest):
     search_query = f"{recent} {body.message}".strip()
 
     # Retrieve from Schift
-    results = client.search(
-        COLLECTION_ID, search_query, top_k=4, score_threshold=0.70
+    results = client.query(
+        search_query,
+        collection=COLLECTION_ID,
+        top_k=4,
+        rerank=True,
+        rerank_top_k=4,
     )
-    context = "\n\n".join(r.text for r in results)
+    context = "\n\n".join((r.get("metadata") or {}).get("text", "") for r in results)
 
     # Assemble messages
     messages = [

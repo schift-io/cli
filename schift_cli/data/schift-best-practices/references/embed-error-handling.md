@@ -15,7 +15,7 @@ Schift raises three primary error types you must handle:
 | `QuotaError` | 402 | Monthly credit limit reached |
 | `RateLimitError` | 429 | Too many requests per second |
 
-`AuthError` is a hard failure — check your key. `QuotaError` means you need to top up credits or wait for the next billing cycle. `RateLimitError` is transient and should be retried with exponential backoff.
+`AuthError` is a hard failure — check your key. `QuotaError` means you have exceeded your plan limits. Upgrade your plan or wait for the next billing cycle. `RateLimitError` is transient and should be retried with exponential backoff.
 
 **Incorrect** — no error handling; a single quota error crashes the entire job:
 
@@ -66,7 +66,7 @@ def embed_with_retry(texts: list[str], max_retries: int = 5) -> list:
         except QuotaError as e:
             # Credits exhausted — log and stop; retrying won't help
             raise RuntimeError(
-                f"Schift quota exceeded. Top up credits at https://app.schift.io/billing. "
+                f"Schift quota exceeded. Check your plan limits at https://app.schift.io/billing. "
                 f"Details: {e}"
             )
 
@@ -117,7 +117,7 @@ async function embedWithRetry(
       if (err instanceof QuotaError) {
         // Credits exhausted — log and stop
         throw new Error(
-          `Schift quota exceeded. Top up credits at https://app.schift.io/billing. ${err.message}`,
+          `Schift quota exceeded. Check your plan limits at https://app.schift.io/billing. ${err.message}`,
         );
       }
 

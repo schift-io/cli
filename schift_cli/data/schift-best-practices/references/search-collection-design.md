@@ -35,7 +35,7 @@ client.collection.add("everything", documents=[
 ])
 
 # Query now competes against all domains — noisy results
-results = client.search("everything", "how to embed documents")
+results = client.query("how to embed documents", collection="everything")
 # Returns: API reference, support tickets, release notes, all mixed together
 ```
 
@@ -121,25 +121,22 @@ client.collection.add("product-docs", documents=[
 ])
 
 # Queries are scoped to the right domain — clean, relevant results
-product_results = client.search(
-    "product-docs",
+product_results = client.query(
     "how to upload files",
+    collection="product-docs",
     top_k=5,
-    filters={"category": "guide", "language": "en"}
 )
 
-support_results = client.search(
-    "support-tickets",
+support_results = client.query(
     "upload fails with 413 error",
+    collection="support-tickets",
     top_k=8,
-    filters={"status": "open", "product_area": "ingestion"}
 )
 
-api_results = client.search(
-    "api-reference",
+api_results = client.query(
     "create embedding endpoint",
+    collection="api-reference",
     top_k=3,
-    filters={"deprecated": False, "version": "v1"}
 )
 ```
 
@@ -200,14 +197,20 @@ await client.collection.add('product-docs', {
 });
 
 // Query scoped to the right domain
-const productResults = await client.search('product-docs', 'how to upload files', {
+const productResults = await client.search({
+  collection: 'product-docs',
+  query: 'how to upload files',
   topK: 5,
-  filters: { category: 'guide', language: 'en' },
+  filter: { category: 'guide', language: 'en' },
+  mode: 'hybrid',
 });
 
-const supportResults = await client.search('support-tickets', 'upload fails with 413 error', {
+const supportResults = await client.search({
+  collection: 'support-tickets',
+  query: 'upload fails with 413 error',
   topK: 8,
-  filters: { status: 'open', product_area: 'ingestion' },
+  filter: { status: 'open', product_area: 'ingestion' },
+  mode: 'hybrid',
 });
 ```
 

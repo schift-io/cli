@@ -8,8 +8,8 @@ Command-line interface for Schift, the operational layer for bucket ingest, vect
 - Upload files into a bucket and track ingest jobs
 - Inspect the embedding model catalog
 - Generate single or batch embeddings
-- Create and inspect vector collections
-- Run bucket or collection search from the terminal
+- Create and inspect vector buckets
+- Run bucket or bucket search from the terminal
 - Benchmark a source-to-target migration before rollout
 - Fit and execute projection-based migrations
 - Inspect usage summaries
@@ -72,7 +72,7 @@ schift embed "hello world" --model openai/text-embedding-3-large
 
 schift db create my-docs --dim 3072 --metric cosine
 schift db list
-schift search "revenue report" --collection my-docs --top-k 5
+schift search "revenue report" --bucket my-docs --top-k 5
 
 schift bench \
   --source openai/text-embedding-3-large \
@@ -99,11 +99,11 @@ schift migrate run \
 | `schift embed ...` | Generate embeddings from text |
 | `schift bench ...` | Evaluate migration quality between two models |
 | `schift migrate ...` | Fit a projection and apply it to a database |
-| `schift db ...` | Create, list, and inspect collections |
+| `schift db ...` | Create, list, and inspect buckets |
 | `schift upload ...` | Upload files into a bucket |
 | `schift jobs ...` | Inspect, reprocess, and cancel ingest jobs |
-| `schift search ...` | Run bucket or collection search |
-| `schift query ...` | Compatibility alias for collection search |
+| `schift search ...` | Run bucket search |
+| `schift query ...` | Compatibility alias for bucket search |
 | `schift usage ...` | Show aggregated usage and billing summary |
 
 ## Authentication
@@ -169,27 +169,27 @@ Output format for `--output`:
 
 If `--output` is omitted, the CLI prints only a summary count and embedding dimension.
 
-## Collection Commands
+## Bucket Commands
 
-Create a collection:
+Create a bucket:
 
 ```bash
 schift db create my-docs --dim 3072 --metric cosine
 ```
 
-List collections:
+List buckets:
 
 ```bash
 schift db list
 ```
 
-Inspect one collection:
+Inspect one bucket:
 
 ```bash
 schift db stats my-docs
 ```
 
-`db list` prints a table with collection name, dimensions, metric, vector count, and creation time. `db stats` prints a detailed panel with index and storage metadata when the API returns it.
+`db list` prints a table with bucket name, dimensions, metric, vector count, and creation time. `db stats` prints a detailed panel with index and storage metadata when the API returns it.
 
 ## Upload Command
 
@@ -218,13 +218,13 @@ schift jobs reprocess job_123
 ```bash
 schift search \
   "revenue guidance" \
-  --collection my-docs \
+  --bucket my-docs \
   --top-k 10 \
   --model openai/text-embedding-3-large \
   --threshold 0.8
 ```
 
-- Pass exactly one of `--collection` or `--bucket`.
+- Pass `--bucket`. `--collection` remains as a deprecated alias.
 - `--model` is optional.
 - `--threshold` lets you filter low-score results after the API returns matches.
 - `--filter` accepts the canonical JSON filter envelope for metadata and system fields.
@@ -234,10 +234,10 @@ The CLI prints a ranked result table with ID, score, and a truncated text previe
 ## Query Compatibility Command
 
 ```bash
-schift query "revenue guidance" --collection my-docs --top-k 10
+schift query "revenue guidance" --bucket my-docs --top-k 10
 ```
 
-`query` remains as the compatibility alias for older collection-search scripts.
+`query` remains as the compatibility alias for older scripts.
 
 ## Benchmark Command
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "schift-cli"
 version = "0.1.0"
-description = "Schift CLI — manage agents, embeddings, and vector collections"
+description = "Schift CLI — manage agents, embeddings, and vector buckets"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 dependencies = [

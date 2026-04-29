@@ -8,7 +8,7 @@ from schift_cli.display import error, info, print_kv, print_table, success
 
 @click.group("db")
 def db() -> None:
-    """Manage vector collections."""
+    """Manage vector buckets."""
 
 
 @db.command("create")
@@ -17,7 +17,7 @@ def db() -> None:
 @click.option("--metric", type=click.Choice(["cosine", "euclidean", "dot"]),
               default="cosine", show_default=True, help="Distance metric")
 def create(name: str, dim: int, metric: str) -> None:
-    """Create a new vector collection."""
+    """Create a new vector bucket."""
     try:
         with get_client() as client:
             data = client.post(
@@ -25,30 +25,30 @@ def create(name: str, dim: int, metric: str) -> None:
                 json={"name": name, "dimensions": dim, "metric": metric},
             )
     except SchiftAPIError as e:
-        error(f"Failed to create collection: {e.detail}")
+        error(f"Failed to create bucket: {e.detail}")
         raise SystemExit(1)
     except click.ClickException:
         raise
 
-    collection = data.get("collection", data)
-    success(f"Collection '{name}' created (id: {collection.get('id', '-')})")
+    bucket = data.get("bucket", data.get("collection", data))
+    success(f"Bucket '{name}' created (id: {bucket.get('id', '-')})")
 
 
 @db.command("list")
 def list_collections() -> None:
-    """List all vector collections."""
+    """List all vector buckets."""
     try:
         with get_client() as client:
             data = client.get("/collections")
     except SchiftAPIError as e:
-        error(f"Failed to list collections: {e.detail}")
+        error(f"Failed to list buckets: {e.detail}")
         raise SystemExit(1)
     except click.ClickException:
         raise
 
-    collections = data.get("collections", [])
+    collections = data.get("buckets", data.get("collections", []))
     if not collections:
-        info("No collections found. Create one with `schift db create`.")
+        info("No buckets found. Create one with `schift db create`.")
         return
 
     rows = [
@@ -62,7 +62,7 @@ def list_collections() -> None:
         for c in collections
     ]
     print_table(
-        "Vector Collections",
+        "Vector Buckets",
         ["Name", "Dimensions", "Metric", "Vectors", "Created"],
         rows,
     )
@@ -71,13 +71,13 @@ def list_collections() -> None:
 @db.command("stats")
 @click.argument("name")
 def stats(name: str) -> None:
-    """Show statistics for a collection."""
+    """Show statistics for a bucket."""
     try:
         with get_client() as client:
             data = client.get(f"/collections/{name}/stats")
     except SchiftAPIError as e:
         if e.status_code == 404:
-            error(f"Collection not found: {name}")
+            error(f"Bucket not found: {name}")
         else:
             error(f"Failed to get stats: {e.detail}")
         raise SystemExit(1)
@@ -85,7 +85,7 @@ def stats(name: str) -> None:
         raise
 
     s = data.get("stats", data)
-    print_kv(f"Collection: {name}", {
+    print_kv(f"Bucket: {name}", {
         "Vectors": s.get("vector_count", "-"),
         "Dimensions": s.get("dimensions", "-"),
         "Metric": s.get("metric", "-"),

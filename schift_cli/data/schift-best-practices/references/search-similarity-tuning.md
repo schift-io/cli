@@ -28,7 +28,7 @@ from schift import Schift
 client = Schift(api_key="sch_...")
 
 # Same settings for everything: chatbot QA, exploratory search, code lookup
-results = client.search(collection_id, query)  # top_k defaults to 10, no threshold
+results = client.query(query, collection=collection_id, top_k=10)
 
 for r in results:
     context += r.text  # may include chunks with score=0.42 (largely irrelevant)
@@ -41,7 +41,11 @@ import { Schift } from '@schift-io/sdk';
 const client = new Schift({ apiKey: 'sch_...' });
 
 // Same settings for everything
-const results = await client.search(collectionId, query);  // top_k=10, no threshold
+const results = await client.search({
+  collection: collectionId,
+  query,
+  topK: 10,
+});
 
 const context = results.map(r => r.text).join('\n');  // includes noise
 ```
@@ -59,27 +63,28 @@ from schift import Schift
 client = Schift(api_key="sch_...")
 
 # Chatbot Q&A: tight precision, high confidence
-qa_results = client.search(
-    collection_id,
+qa_results = client.query(
     query,
-    top_k=3,            # few but precise chunks
-    score_threshold=0.78  # discard anything below 78% similarity
+    collection=collection_id,
+    top_k=3,
+    rerank=True,
+    rerank_top_k=3,
 )
 
 # Research / exploratory: wider recall, lower threshold
-explore_results = client.search(
-    collection_id,
+explore_results = client.query(
     query,
-    top_k=30,           # broad recall for exploration
-    score_threshold=0.55  # accept weaker matches
+    collection=collection_id,
+    top_k=30,
 )
 
 # Code retrieval: moderate, function-level precision
-code_results = client.search(
-    collection_id,
+code_results = client.query(
     query,
+    collection=collection_id,
     top_k=5,
-    score_threshold=0.70
+    rerank=True,
+    rerank_top_k=5,
 )
 
 # Always check: if nothing passes threshold, surface a "no results" message
@@ -94,21 +99,30 @@ import { Schift } from '@schift-io/sdk';
 const client = new Schift({ apiKey: 'sch_...' });
 
 // Chatbot Q&A: tight precision, high confidence
-const qaResults = await client.search(collectionId, query, {
+const qaResults = await client.search({
+  collection: collectionId,
+  query,
   topK: 3,
-  scoreThreshold: 0.78,
+  mode: "hybrid",
+  rerank: true,
+  rerankTopK: 3,
 });
 
 // Research / exploratory: wider recall
-const exploreResults = await client.search(collectionId, query, {
+const exploreResults = await client.search({
+  collection: collectionId,
+  query,
   topK: 30,
-  scoreThreshold: 0.55,
 });
 
 // Code retrieval
-const codeResults = await client.search(collectionId, query, {
+const codeResults = await client.search({
+  collection: collectionId,
+  query,
   topK: 5,
-  scoreThreshold: 0.70,
+  mode: "hybrid",
+  rerank: true,
+  rerankTopK: 5,
 });
 
 // Handle empty results gracefully

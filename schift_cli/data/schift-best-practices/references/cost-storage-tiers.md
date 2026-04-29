@@ -49,7 +49,7 @@ print(f"Indexed {result.chunk_count} chunks")
 
 # Day 7:  FAISS evicted — first query adds 2s cold-start latency (no warning)
 # Day 30: S3 data deleted — collection.search() returns empty results with no error
-# Day 31: client.search(collection_id, query) → [] (silently empty, data gone)
+# Day 31: client.query(query, collection=collection_id) → [] (silently empty, data gone)
 
 # There is no recovery path. Source documents must be re-uploaded.
 ```
@@ -132,7 +132,11 @@ async function searchWithWarmGuard(collectionId: string, query: string) {
     await client.collection.warm(collectionId);
   }
 
-  return client.search(collectionId, query, { topK: 5 });
+  return client.search({
+    collection: collectionId,
+    query,
+    topK: 5,
+  });
 }
 ```
 

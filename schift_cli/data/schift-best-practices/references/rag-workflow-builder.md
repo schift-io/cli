@@ -33,10 +33,14 @@ const openai = new OpenAI();
 // No versioning, no run history, impossible to A/B test
 async function answerQuestion(question: string) {
   // Step 1: retrieve — hardcoded params, no way to tune per environment
-  const results = await client.search(collectionId, question, { topK: 5 });
+  const results = await client.search({
+    collection: collectionId,
+    query: question,
+    topK: 5,
+  });
 
   // Step 2: no reranking step — order determined by vector score alone
-  const context = results.map(r => r.text).join('\n\n');
+  const context = results.map(r => r.metadata?.text ?? '').join('\n\n');
 
   // Step 3: generate — prompt template hardcoded here, not versioned
   const completion = await openai.chat.completions.create({
@@ -94,7 +98,7 @@ const graph = new WorkflowBuilder()
     config: {
       collectionId: 'col_docs_prod',
       topK: 10,
-      scoreThreshold: 0.70,
+      mode: 'hybrid',
       taskType: 'qa',
     },
   })

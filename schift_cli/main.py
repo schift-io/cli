@@ -22,7 +22,7 @@ from schift_cli.commands.usage import usage
 def cli() -> None:
     """Schift CLI -- AI Agent Framework.
 
-    Manage agents, embedding models, vector collections, and migrations
+    Manage agents, embedding models, buckets, and migrations
     from the command line.
     """
 

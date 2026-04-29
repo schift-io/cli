@@ -39,8 +39,12 @@ const client = new Schift({ apiKey: process.env.SCHIFT_API_KEY! });
 
 app.post('/chat', async (c) => {
   const { query } = await c.req.json();
-  const results = await client.search('col_...', query, { topK: 3 });
-  return c.json({ results });
+  const results = await client.collectionSearch('docs', {
+    query,
+    topK: 3,
+    mode: 'hybrid',
+  });
+  return c.json({ results: results.results ?? results });
 });
 
 export default app;
@@ -92,12 +96,14 @@ const client = new Schift({ apiKey: process.env.SCHIFT_API_KEY! });
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
 app.post('/search', async (c) => {
-  const { query, collectionId } = await c.req.json();
-  const results = await client.search(collectionId, query, {
+  const { query, collection } = await c.req.json();
+  const results = await client.collectionSearch(collection, {
+    query,
     topK: 5,
-    scoreThreshold: 0.72,
+    mode: 'hybrid',
+    rerank: true,
   });
-  return c.json({ results });
+  return c.json({ results: results.results ?? results });
 });
 
 const port = Number(process.env.PORT) || 8080;

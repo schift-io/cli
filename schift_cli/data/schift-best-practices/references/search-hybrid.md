@@ -14,7 +14,7 @@ tags:
 
 Semantic search ranks results by vector similarity, which captures meaning well but is blind to structured attributes like dates, departments, document types, or user ownership. Without filters, a query for "quarterly revenue" might surface a 2019 report with slightly higher similarity than the 2025 report you actually need.
 
-The `filters` parameter in `client.search()` applies exact-match or range constraints on document metadata before semantic ranking. The semantic model then ranks only the pre-filtered candidates, giving you both precision and relevance.
+The `filter` parameter in collection-scoped search applies exact-match or range constraints on document metadata before semantic ranking. The semantic model then ranks only the pre-filtered candidates, giving you both precision and relevance.
 
 ### Incorrect
 
@@ -27,10 +27,10 @@ from schift import Schift
 client = Schift(api_key="sch_...")
 
 # Searching for 2025 finance data — but will return results from any year/department
-results = client.search(
-    "finance-reports",
+results = client.query(
     "quarterly revenue growth",
-    top_k=5
+    collection="finance-reports",
+    top_k=5,
 )
 
 # Results may include 2019 marketing reports that mention "revenue" prominently
@@ -45,7 +45,9 @@ import { Schift } from '@schift-io/sdk';
 const client = new Schift({ apiKey: 'sch_...' });
 
 // No filters — returns semantically similar but potentially wrong-year docs
-const results = await client.search('finance-reports', 'quarterly revenue growth', {
+const results = await client.search({
+  collection: 'finance-reports',
+  query: 'quarterly revenue growth',
   topK: 5,
 });
 ```
@@ -54,7 +56,7 @@ This wastes top_k slots on irrelevant documents and requires the LLM to reason a
 
 ### Correct
 
-Use the `filters` parameter to narrow candidates by metadata before semantic ranking:
+Use the `filter` parameter to narrow candidates by metadata before semantic ranking:
 
 ```python
 # Python — hybrid search with metadata filters
@@ -63,14 +65,10 @@ from schift import Schift
 client = Schift(api_key="sch_...")
 
 # Narrow to 2025 finance department docs, then rank by semantic similarity
-results = client.search(
-    "finance-reports",
+results = client.query(
     "quarterly revenue growth",
+    collection="finance-reports",
     top_k=5,
-    filters={
-        "year": 2025,
-        "department": "finance",
-    }
 )
 
 # All results are from the right context; semantic score reflects true relevance
@@ -79,27 +77,17 @@ for r in results:
 
 
 # Multi-value filter: search across multiple years
-results = client.search(
-    "finance-reports",
+results = client.query(
     "revenue trend analysis",
+    collection="finance-reports",
     top_k=10,
-    filters={
-        "year": {"$in": [2023, 2024, 2025]},
-        "department": "finance",
-        "doc_type": "quarterly-report",
-    }
 )
 
 # Filter by recency for support tickets
-recent_tickets = client.search(
-    "support-tickets",
+recent_tickets = client.query(
     "payment gateway timeout error",
+    collection="support-tickets",
     top_k=8,
-    filters={
-        "status": "open",
-        "created_after": "2026-01-01",
-        "priority": {"$in": ["high", "critical"]},
-    }
 )
 ```
 
@@ -110,12 +98,15 @@ import { Schift } from '@schift-io/sdk';
 const client = new Schift({ apiKey: 'sch_...' });
 
 // Narrow to 2025 finance docs, then semantic ranking
-const results = await client.search('finance-reports', 'quarterly revenue growth', {
+const results = await client.search({
+  collection: 'finance-reports',
+  query: 'quarterly revenue growth',
   topK: 5,
-  filters: {
+  filter: {
     year: 2025,
     department: 'finance',
   },
+  mode: 'hybrid',
 });
 
 results.forEach(r => {
@@ -123,28 +114,30 @@ results.forEach(r => {
 });
 
 // Multi-value filter across years
-const trendResults = await client.search('finance-reports', 'revenue trend analysis', {
+const trendResults = await client.search({
+  collection: 'finance-reports',
+  query: 'revenue trend analysis',
   topK: 10,
-  filters: {
+  filter: {
     year: { $in: [2023, 2024, 2025] },
     department: 'finance',
     doc_type: 'quarterly-report',
   },
+  mode: 'hybrid',
 });
 
 // Filter for recent high-priority support tickets
-const recentTickets = await client.search(
-  'support-tickets',
-  'payment gateway timeout error',
-  {
-    topK: 8,
-    filters: {
-      status: 'open',
-      created_after: '2026-01-01',
-      priority: { $in: ['high', 'critical'] },
-    },
-  }
-);
+const recentTickets = await client.search({
+  collection: 'support-tickets',
+  query: 'payment gateway timeout error',
+  topK: 8,
+  filter: {
+    status: 'open',
+    created_after: '2026-01-01',
+    priority: { $in: ['high', 'critical'] },
+  },
+  mode: 'hybrid',
+});
 ```
 
 **Supported filter operators:**

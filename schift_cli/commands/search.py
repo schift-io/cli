@@ -11,7 +11,7 @@ from schift_cli.display import console, error, print_table
 @click.command("search")
 @click.argument("text")
 @click.option("--bucket", "-b", default=None, help="Bucket name or bucket ID")
-@click.option("--collection", "-c", default=None, help="Collection name")
+@click.option("--collection", "-c", default=None, help="Deprecated alias for --bucket")
 @click.option("--top-k", "-k", type=int, default=10, show_default=True, help="Number of results to return")
 @click.option("--model", "-m", default=None, help="Embedding model to use for the query")
 @click.option("--mode", type=click.Choice(["hybrid", "semantic", "keyword"]), default="hybrid", show_default=True, help="Retrieval mode")
@@ -29,7 +29,7 @@ def search(
     threshold: float | None,
     filter_json: str | None,
 ) -> None:
-    """Run bucket or collection search with the canonical search surface."""
+    """Run bucket search with the canonical search surface."""
     if bool(bucket) == bool(collection):
         raise click.ClickException("Pass exactly one of --bucket or --collection.")
 
@@ -58,8 +58,8 @@ def search(
                 title = f"Bucket Search ({resolved_bucket.get('name', bucket)})"
                 data = client.post(f"/buckets/{resolved_bucket['id']}/search", json=payload)
             else:
-                title = f"Collection Search ({collection})"
-                data = client.post(f"/collections/{collection}/search", json=payload)
+                title = f"Bucket Search ({collection})"
+                data = client.post(f"/buckets/{collection}/search", json=payload)
     except SchiftAPIError as exc:
         error(f"Search failed: {exc.detail}")
         raise SystemExit(1)

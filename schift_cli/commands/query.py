@@ -2,25 +2,29 @@ from __future__ import annotations
 
 import click
 
-from schift_cli.client import get_client, SchiftAPIError
+from schift_cli.client import get_client, resolve_bucket, SchiftAPIError
 from schift_cli.display import console, error, print_table
 
 
 @click.command("query")
 @click.argument("text")
-@click.option("--collection", "-c", required=True, help="Collection name to search")
+@click.option("--bucket", "-b", default=None, help="Bucket name or bucket ID to search")
+@click.option("--collection", "-c", default=None, help="Deprecated alias for --bucket")
 @click.option("--top-k", "-k", type=int, default=10, show_default=True,
               help="Number of results to return")
-@click.option("--model", "-m", default=None, help="Embedding model to use for the query (uses collection default if omitted)")
+@click.option("--model", "-m", default=None, help="Embedding model to use for the query (uses bucket default if omitted)")
 @click.option("--threshold", type=float, default=None, help="Minimum similarity score filter")
-def query(text: str, collection: str, top_k: int, model: str | None, threshold: float | None) -> None:
-    """Search a vector collection with natural language.
+def query(text: str, bucket: str | None, collection: str | None, top_k: int, model: str | None, threshold: float | None) -> None:
+    """Compatibility alias for bucket search.
 
     TEXT is the search query string.
     """
+    resolved_bucket = bucket or collection
+    if not resolved_bucket:
+        raise click.ClickException("Pass --bucket. --collection remains as a deprecated alias.")
+
     payload: dict = {
-        "text": text,
-        "collection": collection,
+        "query": text,
         "top_k": top_k,
     }
     if model:
@@ -30,7 +34,11 @@ def query(text: str, collection: str, top_k: int, model: str | None, threshold: 
 
     try:
         with get_client() as client:
-            data = client.post("/query", json=payload)
+            if bucket:
+                bucket_id = resolve_bucket(client, bucket)["id"]
+            else:
+                bucket_id = collection
+            data = client.post(f"/buckets/{bucket_id}/search", json=payload)
     except SchiftAPIError as e:
         error(f"Query failed: {e.detail}")
         raise SystemExit(1)
@@ -53,7 +61,7 @@ def query(text: str, collection: str, top_k: int, model: str | None, threshold: 
     ]
 
     print_table(
-        f"Search Results ({collection})",
+        f"Search Results ({resolved_bucket})",
         ["#", "ID", "Score", "Text"],
         rows,
         caption=f"Query: \"{text}\" | top-k: {top_k}",

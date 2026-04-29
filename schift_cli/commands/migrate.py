@@ -125,3 +125,154 @@ def _mask_connection_string(conn: str) -> str:
             scheme_user = before_at.rsplit(":", 1)[0]
             return f"{scheme_user}:***@{after_at}"
     return conn
+
+
+# ──────────────────────────────────────────────────────────────────────
+# /v1/migrate (vectors-in via canonical hub) — quote / start / status
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _parse_source_url(url: str) -> dict:
+    """Parse `pgvector://user:pass@host:5432/dbname?table=docs&id=id&embedding=embedding`
+    or `chroma://host:8000?collection=name`
+    or `pinecone://host?namespace=&api_key=...`
+    or `weaviate://host?class=Doc`.
+    """
+    from urllib.parse import urlparse, parse_qs
+
+    p = urlparse(url)
+    kind = p.scheme
+    qs = {k: v[0] for k, v in parse_qs(p.query).items()}
+
+    if kind == "pgvector":
+        dsn = f"postgresql://{p.username + ':' + p.password + '@' if p.username else ''}{p.hostname}{':' + str(p.port) if p.port else ''}{p.path or ''}"
+        if not qs.get("table"):
+            raise click.BadParameter("pgvector URL must include ?table=name", param_hint="--from")
+        cfg = {"dsn": dsn, "table": qs["table"]}
+        for k in ("id_col", "embedding_col", "text_col", "metadata_col", "where"):
+            if k in qs:
+                cfg[k] = qs[k]
+        return {"kind": "pgvector", "config": cfg}
+
+    if kind == "chroma":
+        cfg = {"host": p.hostname, "port": p.port or 8000}
+        if "collection" not in qs:
+            raise click.BadParameter("chroma URL must include ?collection=name", param_hint="--from")
+        cfg["collection_name"] = qs["collection"]
+        for k in ("ssl", "tenant", "database", "api_key"):
+            if k in qs:
+                cfg[k] = qs[k] if k != "ssl" else qs[k].lower() == "true"
+        return {"kind": "chroma", "config": cfg}
+
+    if kind == "pinecone":
+        if "api_key" not in qs:
+            raise click.BadParameter("pinecone URL must include ?api_key=...", param_hint="--from")
+        cfg = {"host": p.hostname, "api_key": qs["api_key"]}
+        for k in ("namespace", "text_field"):
+            if k in qs:
+                cfg[k] = qs[k]
+        return {"kind": "pinecone", "config": cfg}
+
+    if kind == "weaviate":
+        if "class" not in qs:
+            raise click.BadParameter("weaviate URL must include ?class=ClassName", param_hint="--from")
+        cfg = {"url": f"https://{p.hostname}{':' + str(p.port) if p.port else ''}", "class_name": qs["class"]}
+        for k in ("api_key", "text_field"):
+            if k in qs:
+                cfg[k] = qs[k]
+        return {"kind": "weaviate", "config": cfg}
+
+    raise click.BadParameter(
+        f"Unknown source scheme '{kind}' (supported: pgvector|chroma|pinecone|weaviate)",
+        param_hint="--from",
+    )
+
+
+def _parse_target(url: str) -> str:
+    """`schift://col_id` -> "col_id" """
+    if not url.startswith("schift://"):
+        raise click.BadParameter("--to must be schift://<collection_id>", param_hint="--to")
+    return url.removeprefix("schift://").strip("/")
+
+
+@migrate.command("quote")
+@click.option("--from", "from_url", required=True, help="Source URL (pgvector|chroma|pinecone|weaviate scheme)")
+@click.option("--export-out/--retain-cloud", default=False, help="Export-out pricing ($0.50/1M) vs Schift Cloud retention ($0.10/1M)")
+def quote_cmd(from_url: str, export_out: bool) -> None:
+    """Get migration quote based on source size."""
+    src = _parse_source_url(from_url)
+    info(f"Source: {src['kind']} (config redacted)")
+    try:
+        with get_client() as client:
+            with spinner("Counting vectors...") as progress:
+                progress.add_task("Counting vectors...", total=None)
+                resp = client.post(
+                    "/migrate/quote",
+                    json={"source": src, "retain_on_cloud": not export_out},
+                )
+    except SchiftAPIError as e:
+        error(f"Quote failed: {e.detail}")
+        raise SystemExit(1)
+    print_kv("Quote", {
+        "Vectors": f"{resp['n_total_vectors']:,}",
+        "Source dim": resp["src_dim"],
+        "Free tier": "yes" if resp["free_tier"] else "no",
+        "Rate": f"${resp['rate_per_million_cents']/100:.2f} / 1M vectors",
+        "Total": f"${resp['quote_usd']:.2f}",
+    })
+
+
+@migrate.command("start")
+@click.option("--from", "from_url", required=True, help="Source URL")
+@click.option("--to", "to_url", required=True, help="schift://<collection_id>")
+@click.option("--method", type=click.Choice(["ridge", "procrustes"]), default="ridge")
+@click.option("--export-out/--retain-cloud", default=False)
+def start_cmd(from_url: str, to_url: str, method: str, export_out: bool) -> None:
+    """Start an async migration job."""
+    src = _parse_source_url(from_url)
+    target_collection_id = _parse_target(to_url)
+    try:
+        with get_client() as client:
+            resp = client.post(
+                "/migrate/start",
+                json={
+                    "source": src,
+                    "target_collection_id": target_collection_id,
+                    "method": method,
+                    "retain_on_cloud": not export_out,
+                },
+            )
+    except SchiftAPIError as e:
+        error(f"Start failed: {e.detail}")
+        raise SystemExit(1)
+    print_kv("Migration job started", {
+        "Job ID": resp["job_id"],
+        "State": resp["state"],
+        "Free tier": "yes" if resp["free_tier"] else "no",
+        "Quote": f"${resp['quote_cents']/100:.2f}",
+        "Requires payment": "yes" if resp["requires_payment"] else "no",
+    })
+    if resp["requires_payment"]:
+        info("Complete payment via Polar checkout to start the job.")
+    else:
+        info(f"Watch progress: schift migrate status {resp['job_id']}")
+
+
+@migrate.command("status")
+@click.argument("job_id")
+def status_cmd(job_id: str) -> None:
+    """Show migration job status."""
+    try:
+        with get_client() as client:
+            resp = client.get(f"/migrate/{job_id}")
+    except SchiftAPIError as e:
+        error(f"Status failed: {e.detail}")
+        raise SystemExit(1)
+    print_kv(f"Migration {job_id}", {
+        "State": resp["state"],
+        "Progress": f"{resp['progress']*100:.1f}%",
+        "Vectors": f"{resp['n_projected']:,} / {resp['n_total']:,}",
+        "CKA": f"{resp['cka']:.4f}" if resp.get("cka") is not None else "-",
+        "Sample retention": f"{resp['sample_retention']*100:.1f}%" if resp.get("sample_retention") is not None else "-",
+        "Error": resp.get("error") or "-",
+    })
