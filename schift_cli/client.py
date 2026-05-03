@@ -28,7 +28,12 @@ class SchiftClient:
     """
 
     def __init__(self, api_key: str | None = None, base_url: str | None = None):
-        self.api_key = api_key or get_api_key()
+        if api_key is not None:
+            if not api_key:
+                raise click.ClickException("API key cannot be empty.")
+            self.api_key = api_key
+        else:
+            self.api_key = get_api_key()
         self.base_url = (base_url or get_api_url()).rstrip("/")
         self._http = httpx.Client(
             base_url=self.base_url,
@@ -105,8 +110,13 @@ class SchiftClient:
         self.close()
 
 
-def require_api_key() -> str:
+def require_api_key(api_key: str | None = None) -> str:
     """Return the API key or abort with a helpful message."""
+    if api_key is not None:
+        if not api_key:
+            raise click.ClickException("API key cannot be empty.")
+        return api_key
+
     key = get_api_key()
     if not key:
         raise click.ClickException(
@@ -116,10 +126,15 @@ def require_api_key() -> str:
     return key
 
 
-def get_client() -> SchiftClient:
+def get_client(api_key: str | None = None) -> SchiftClient:
     """Create a client, ensuring an API key is present."""
-    api_key = require_api_key()
-    return SchiftClient(api_key=api_key)
+    if api_key is None:
+        ctx = click.get_current_context(silent=True)
+        if ctx is not None and isinstance(ctx.obj, dict):
+            api_key = ctx.obj.get("api_key")
+
+    resolved_api_key = require_api_key(api_key)
+    return SchiftClient(api_key=resolved_api_key)
 
 
 def extract_items(data: Any, key: str) -> list[dict[str, Any]]:

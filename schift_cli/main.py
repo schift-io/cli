@@ -18,13 +18,21 @@ from schift_cli.commands.usage import usage
 
 
 @click.group()
+@click.option(
+    "--api-key",
+    default=None,
+    help="Schift API key. Takes precedence over SCHIFT_API_KEY and config file.",
+)
 @click.version_option(version=__version__, prog_name="schift")
-def cli() -> None:
+@click.pass_context
+def cli(ctx: click.Context, api_key: str | None) -> None:
     """Schift CLI -- AI Agent Framework.
 
     Manage agents, embedding models, buckets, and migrations
     from the command line.
     """
+    ctx.ensure_object(dict)
+    ctx.obj["api_key"] = api_key
 
 
 cli.add_command(auth)

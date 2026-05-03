@@ -9,12 +9,26 @@ from schift_cli.client import get_client, SchiftAPIError
 from schift_cli.display import console, error, info, success
 
 
-@click.group("embed", invoke_without_command=True)
-@click.argument("text", required=False, default=None)
+class EmbedGroup(click.Group):
+    """Treat unknown first tokens as inline text while preserving subcommands."""
+
+    def invoke(self, ctx: click.Context) -> object:
+        if ctx._protected_args and self.get_command(ctx, ctx._protected_args[0]) is None:
+            ctx.args = [*ctx._protected_args, *ctx.args]
+            ctx._protected_args = []
+        return super().invoke(ctx)
+
+
+@click.group(
+    "embed",
+    cls=EmbedGroup,
+    invoke_without_command=True,
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
 @click.option("--model", "-m", default=None,
               help="Embedding model ID (e.g. openai/text-embedding-3-large)")
 @click.pass_context
-def embed(ctx: click.Context, text: str | None, model: str | None) -> None:
+def embed(ctx: click.Context, model: str | None) -> None:
     """Generate embeddings for text.
 
     \b
@@ -24,6 +38,28 @@ def embed(ctx: click.Context, text: str | None, model: str | None) -> None:
     """
     if ctx.invoked_subcommand is not None:
         return
+
+    args = list(ctx.args)
+    text_parts: list[str] = []
+    idx = 0
+    while idx < len(args):
+        arg = args[idx]
+        if arg in {"--model", "-m"}:
+            if idx + 1 < len(args):
+                if model is None:
+                    model = args[idx + 1]
+                idx += 2
+                continue
+        elif arg.startswith("--model="):
+            if model is None:
+                model = arg.split("=", 1)[1]
+        elif arg == "--":
+            text_parts.extend(args[idx + 1:])
+            break
+        elif not arg.startswith("-"):
+            text_parts.append(arg)
+        idx += 1
+    text = " ".join(text_parts) or None
 
     if not text:
         raise click.UsageError("Provide TEXT to embed, or use `schift embed batch`.")

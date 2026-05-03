@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import click
+from urllib.parse import urlsplit, urlunsplit
 
 from schift_cli.client import get_client, SchiftAPIError
 from schift_cli.display import console, error, info, print_kv, spinner, success
@@ -116,15 +117,23 @@ def run(projection: str, db: str, dry_run: bool, batch_size: int) -> None:
 
 
 def _mask_connection_string(conn: str) -> str:
-    """Hide password in connection strings for display."""
-    if "@" in conn:
-        # pgvector://user:pass@host -> pgvector://user:***@host
-        before_at = conn.split("@")[0]
-        after_at = conn.split("@", 1)[1]
-        if ":" in before_at:
-            scheme_user = before_at.rsplit(":", 1)[0]
-            return f"{scheme_user}:***@{after_at}"
-    return conn
+    """Hide only the password in connection strings for display."""
+    parsed = urlsplit(conn)
+    if not parsed.password or not parsed.netloc:
+        return conn
+
+    username = parsed.username or ""
+    hostname = parsed.hostname or ""
+    auth = f"{username}:***@" if username else "***@"
+    port = f":{parsed.port}" if parsed.port is not None else ""
+
+    return urlunsplit((
+        parsed.scheme,
+        f"{auth}{hostname}{port}",
+        parsed.path,
+        parsed.query,
+        parsed.fragment,
+    ))
 
 
 # ──────────────────────────────────────────────────────────────────────
